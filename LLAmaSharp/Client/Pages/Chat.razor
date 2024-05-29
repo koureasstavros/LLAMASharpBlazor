@@ -1,0 +1,207 @@
+﻿@page "/chat"
+@using LLAmaSharp.Shared.Models
+
+@using System.Web
+@using System.Text
+@using System.Text.Json
+@inject IJSRuntime JS
+@inject HttpClient Http
+
+<div class="page_sub">
+    <div class="main_sub">
+        <h1>Chat Bot</h1>
+        <p>In this page you can contact with Documentation ChatBot.</p>
+
+        @if (chatLoading == false)
+        {
+            <EditForm Model="@chatRequest">
+                <DataAnnotationsValidator />
+                <div>
+                    <table>
+                        <tr>
+                            <td><button type="submit" @onclick="DoChatAsync" cy-data="chat_async" class="btn btn-primary">Communicate Async</button></td>
+                            <td><button type="submit" @onclick="DoChatTest" cy-data="chat_test" class="btn btn-light">Communicate Test</button></td>
+                            <td><button type="button" @onclick="DoChatClear" cy-data="chat_clear" class="btn btn-warning">Communicate Clear</button></td>
+                        </tr>
+                    </table>
+                </div>
+                <div class="mb-2">
+                    <label for="Context" class="form-label">Context</label>
+                    <div class="col-md-8">
+                        <InputText cy-data="chat_context" class="form-control" @bind-Value="chatRequest.context" placeholder="Context" required />
+                            <ValidationMessage For="@(() => chatRequest.context)" />
+                    </div>
+                    <label for="Context" class="form-label">Prompt</label>
+                    <div class="col-md-8">
+                        <InputText cy-data="chat_prompt" class="form-control" @bind-Value="chatRequest.prompt" placeholder="prompt" required />
+                        <ValidationMessage For="@(() => chatRequest.prompt)" />
+                    </div>
+                    <label for="Context" class="form-label">Response</label>
+                    <div class="col-md-8">
+                        <InputTextArea cy-data="chat_response" class="form-control" @bind-Value="chatResponse.response" placeholder="Response" style="min-height:300px;height:auto;max-height:stretch;" disabled />
+                        <ValidationMessage For="@(() => chatResponse.response)" />
+                    </div>
+                    <div class="col-md-8">
+                        <table style="width:100%;">
+                            <tr>
+                                <td style="width:100%;">
+                                    @if (chatProcessing == true)
+                                    {
+                                        <div class="wavec">
+                                            <div class="wave"></div>
+                                            <div class="wave"></div>
+                                            <div class="wave"></div>
+                                            <div class="wave"></div>
+                                            <div class="wave"></div>
+                                            <div class="wave"></div>
+                                            <div class="wave"></div>
+                                            <div class="wave"></div>
+                                            <div class="wave"></div>
+                                            <div class="wave"></div>
+                                        </div>
+                                    }
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </EditForm>
+        }
+        else
+        { <div class="spinnerpage"></div> }
+    </div>
+</div>
+
+@code {
+    private bool sidebar_shape = true;
+    private static bool sidebar_shape_stat = true;
+    public bool chatLoading = false;
+    public bool chatProcessing = false;
+    public ChatRequest chatRequest = new();
+    public ChatResponse chatResponse = new();
+    private CancellationTokenSource? cancellationTokenSource = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+    }   
+
+    protected async void DoChatAsync()
+    {
+        chatProcessing = true;
+        CancellationToken cancellationToken = GetCancellationToken();
+        chatResponse.response = string.Empty;
+        //POST ASYNC WAITS FOR FULL RESPONSE FROM CONTROLLER
+        //SENT ASYNC STARTS WITH THE FIRST ITERATION BUTH THEN ReadAsStreamAsync WAITS
+
+        var requestContent = new StringContent(System.Text.Json.JsonSerializer.Serialize(chatRequest), Encoding.UTF8, "application/json");
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "api/chat/communicate_async")
+        {
+            Content = requestContent
+        };
+        //requestMessage.Headers.Accept.Append(new MediaTypeWithQualityHeaderValue("application/stream+json"));
+        requestMessage.SetBrowserResponseStreamingEnabled(true); // Enable response streaming
+
+        var response = await Http.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead);
+
+        // using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        // using var reader = new StreamReader(stream);
+        // while (!reader.EndOfStream)
+        // {
+        //     var line = await reader.ReadLineAsync();
+        //     if (line != null)
+        //     {
+        //         chatResponse.response += line;
+        //         StateHasChanged();
+        //     }
+        // }
+
+        // using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        // using var reader = new StreamReader(stream);        
+        // string? line = null;
+        // while ((line = await reader.ReadLineAsync()) != null)
+        // {
+        //     chatResponse.response += line;
+        //     StateHasChanged();
+        // }
+
+        // var lines = response.Content.ReadFromNdjsonAsync<string>(cancellationToken: cancellationToken);
+        // await foreach (string? line in lines)
+        // {
+        //     chatResponse.response += line;
+        //     StateHasChanged();
+        // }
+
+        // using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        // var lines = System.Text.Json.JsonSerializer.DeserializeAsyncEnumerable<string>(
+        //     stream,
+        //     new JsonSerializerOptions
+        //         {
+        //             PropertyNameCaseInsensitive = true,
+        //             DefaultBufferSize = 128
+        //         },
+        //      cancellationToken);
+        // await foreach (string? line in lines)
+        //     {
+        //         chatResponse.response += line;
+        //         StateHasChanged();
+        //     }
+
+        // var stream = await response.Content.ReadAsStreamAsync();
+        // var str = new StreamReader(stream);
+        // var reader = new JsonTextReader(str);
+        // var setting = new JsonSerializerSettings() { TypeNameHandling = TypeNameHandling.All };
+        // var seri = Newtonsoft.Json.JsonSerializer.Create(setting);
+        // while (await reader.ReadAsync())
+        // {
+        //     if (reader.TokenType == JsonToken.StartObject)
+        //     {
+        //         string? result = seri.Deserialize<string>(reader);
+        //         chatResponse.response += result;
+        //         StateHasChanged();
+        //     }
+        // }
+
+        IAsyncEnumerable<string?> results = response.Content.ReadFromJsonAsAsyncEnumerable<string>();
+        await foreach (string? result in results)
+        {
+            chatResponse.response += result;
+            StateHasChanged();
+        }
+
+        chatProcessing = false;
+        StateHasChanged();
+    }
+
+    private CancellationToken GetCancellationToken()
+    {
+        cancellationTokenSource = new CancellationTokenSource();
+        return cancellationTokenSource.Token;
+    }
+
+    protected void DoChatTest()
+    {
+        chatRequest.context = "You are an expert";
+        chatRequest.prompt = "Write 100 random words";
+    }
+
+    protected void DoChatClear()
+    {
+        chatResponse.response = string.Empty;
+    }
+
+    public void Loading_Start()
+    {
+        chatLoading = true;
+    }
+
+    public void Loading_Stop()
+    {
+        chatLoading = false;
+        StateHasChanged();
+    }
+
+    protected override async void OnAfterRender(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("console.log", "page_chat_ended");
+    }
+}
